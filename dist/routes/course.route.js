@@ -1,0 +1,21 @@
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = __importDefault(require("express"));
+const auth_1 = require("../middleware/auth");
+const course_controller_1 = require("../controllers/course.controller");
+const CourseRouter = express_1.default.Router();
+CourseRouter.post('/create', auth_1.isAuthenticated, (0, auth_1.authorizeRoles)("admin"), course_controller_1.uploadCourse);
+CourseRouter.get('/get-all', auth_1.isAuthenticated, (0, auth_1.authorizeRoles)("admin"), course_controller_1.getAllCourse);
+CourseRouter.get('/get', course_controller_1.getAllCourses);
+CourseRouter.put('/add-comment', auth_1.isAuthenticated, course_controller_1.addQuestion);
+CourseRouter.put('/add-answer', auth_1.isAuthenticated, course_controller_1.addAnswer);
+CourseRouter.put('/add-reply', auth_1.isAuthenticated, (0, auth_1.authorizeRoles)("admin"), course_controller_1.addReplyToReview);
+CourseRouter.put('/add-review/:id', auth_1.isAuthenticated, course_controller_1.addReview);
+CourseRouter.put('/update/:id', auth_1.isAuthenticated, (0, auth_1.authorizeRoles)("admin"), course_controller_1.editCourse);
+CourseRouter.get('/get-content/:id', auth_1.isAuthenticated, course_controller_1.getCourseByUser);
+CourseRouter.get('/get-single/:id', course_controller_1.getSingleCourse);
+CourseRouter.delete("/delete-course/:id", auth_1.isAuthenticated, (0, auth_1.authorizeRoles)("admin"), course_controller_1.deleteCourse);
+exports.default = CourseRouter;
