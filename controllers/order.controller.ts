@@ -17,10 +17,9 @@ export const createOrder = CatchAsyncError(
 
             const user = await userModel.findById(req.user?._id);
 
-            // ✅ Check if user already purchased
             const courseExistInUser = user?.courses.some(
-                (course: any) => course._id.toString() === courseId
-            );
+    (course: any) => course.courseId.toString() === courseId
+);
 
             if (courseExistInUser) {
                 return next(
@@ -73,6 +72,7 @@ export const createOrder = CatchAsyncError(
 
             // ✅ Invalidate user cache so updated courses list reflects immediately
             if (user?._id) {
+                const updatedUser = await userModel.findById(user?._id);
                 await redis.set(user._id.toString(), JSON.stringify(user), "EX", 604800);
             }
 

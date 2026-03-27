@@ -136,19 +136,15 @@ exports.updateAccessToken = (0, catchAsyncErrors_1.CatchAsyncError)(async (req, 
             return next(new ErrorHandler_1.default(message, 400));
         }
         const user = JSON.parse(session);
-        const accessToken = jsonwebtoken_1.default.sign({ id: user._id }, process.env.ACCESS_TOKEN, {
-            expiresIn: "5m",
-        });
-        const refreshToken = jsonwebtoken_1.default.sign({ id: user._id }, process.env.REFRESH_TOKEN, {
-            expiresIn: "3d",
-        });
+        const accessToken = jsonwebtoken_1.default.sign({ id: user._id }, process.env.ACCESS_TOKEN, { expiresIn: "5m" });
+        const refreshToken = jsonwebtoken_1.default.sign({ id: user._id }, process.env.REFRESH_TOKEN, { expiresIn: "3d" });
         req.user = user;
         res.cookie("access_token", accessToken, jwt_1.accessTokenOptions);
-        res.cookie("access_token", refreshToken, jwt_1.refreshTokenOptions);
+        res.cookie("refresh_token", refreshToken, jwt_1.refreshTokenOptions);
         await redis_1.redis.set(user._id, JSON.stringify(user), "EX", 604800);
         res.status(200).json({
             status: "success",
-            accessToken
+            accessToken,
         });
     }
     catch (error) {

@@ -9,10 +9,9 @@ const ErrorHandler_1 = __importDefault(require("../utils/ErrorHandler"));
 const user_model_1 = __importDefault(require("../models/user.model"));
 const course_model_1 = __importDefault(require("../models/course.model"));
 const order_service_1 = require("../services/order.service");
-const ejs_1 = __importDefault(require("ejs"));
-const path_1 = __importDefault(require("path"));
 const sendMail_1 = __importDefault(require("../utils/sendMail"));
 const notification_model_1 = __importDefault(require("../models/notification.model"));
+const redis_1 = require("../utils/redis"); // ✅ was missing
 exports.createOrder = (0, catchAsyncErrors_1.CatchAsyncError)(async (req, res, next) => {
     try {
         const { courseId, payment_info } = req.body;
@@ -26,15 +25,16 @@ exports.createOrder = (0, catchAsyncErrors_1.CatchAsyncError)(async (req, res, n
             return next(new ErrorHandler_1.default("Course not found", 404));
         }
         const data = {
-            courseId: course?._id,
+            courseId: course._id,
             userId: user?._id,
             payment_info,
         };
+        // ✅ Fixed: mailData was being double-wrapped as { order: mailData }
         const mailData = {
             order: {
-                _id: course?._id.toString().slice(0, 6),
-                name: course?.name,
-                price: course?.price,
+                _id: course._id.toString().slice(0, 6),
+                name: course.name,
+                price: course.price,
                 date: new Date().toLocaleDateString("en-US", {
                     year: "numeric",
                     month: "long",
@@ -42,29 +42,37 @@ exports.createOrder = (0, catchAsyncErrors_1.CatchAsyncError)(async (req, res, n
                 }),
             },
         };
-        const html = await ejs_1.default.renderFile(path_1.default.join(__dirname, "../mails/order-confirmation.ejs"), { order: mailData });
         try {
             if (user) {
                 await (0, sendMail_1.default)({
                     email: user.email,
                     subject: "Order Confirmation",
                     template: "order-confirmation.ejs",
-                    data: mailData,
+                    data: mailData, // ✅ pass mailData directly, not { order: mailData }
                 });
             }
         }
         catch (error) {
             return next(new ErrorHandler_1.default(error.message, 500));
         }
-        user?.courses.push({ courseId: course._id.toString() });
+        // ✅ Fixed: push courseId correctly matching schema { _id: courseId }
+        user?.courses.push({ courseId: courseId });
         await user?.save();
+        // ✅ Invalidate user cache so updated courses list reflects immediately
+        if (user?._id) {
+            await redis_1.redis.set(user._id.toString(), JSON.stringify(user), "EX", 604800);
+        }
         await notification_model_1.default.create({
             title: "New Order",
             userId: user?._id?.toString(),
             message: `You have a new order from ${course.name}`,
         });
+        // ✅ Increment purchased count
         course.purchased = (course.purchased || 0) + 1;
         await course.save();
+        // ✅ Invalidate course cache so purchased count updates
+        await redis_1.redis.del(courseId);
+        await redis_1.redis.del("allCourses");
         (0, order_service_1.newOrder)(data, res, next);
     }
     catch (error) {

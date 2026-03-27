@@ -9,6 +9,7 @@ import mongoose from "mongoose";
 import ejs from "ejs";
 import path from "node:path";
 import sendMail from "../utils/sendMail";
+import userModel from "../models/user.model";
 
 export const uploadCourse = CatchAsyncError(
     async (req: Request, res: Response, next: NextFunction) => {
@@ -28,6 +29,7 @@ export const uploadCourse = CatchAsyncError(
             }
 
             await createCourse(data, res, next);
+            await redis.del("allCourses");
         } catch (error: any) {
             return next(new ErrorHandler(error.message, 500));
         }
@@ -69,6 +71,9 @@ export const editCourse = CatchAsyncError(
                 // { new: true }
                 { returnDocument: "after" }
             );
+
+            await redis.set(courseId.toString(), JSON.stringify(updatedCourse), "EX", 604800);
+            await redis.del("allCourses");
 
             res.status(200).json({
                 success: true,
@@ -121,7 +126,7 @@ export const getAllCourses = CatchAsyncError(
                     "-courseData.videoUrl -courseData.suggestion -courseData.questions -courseData.links"
                 );
 
-                await redis.set("allCourses", JSON.stringify(courses));
+                await redis.set("allCourses", JSON.stringify(courses), "EX", 3600);
 
                 res.status(200).json({
                     success: true,
@@ -197,6 +202,8 @@ export const addQuestion = CatchAsyncError(
             couseContent.questions.push(newQuestion);
 
             await course?.save();
+            await redis.set(courseId, JSON.stringify(course), "EX", 604800);
+            await redis.del("allCourses");
 
             res.status(200).json({
                 success: true,
@@ -250,6 +257,8 @@ export const addAnswer = CatchAsyncError(
             question.questionReplies.push(newAnswer);
 
             await course?.save();
+            await redis.set(courseId, JSON.stringify(course), "EX", 604800);
+            await redis.del("allCourses");
 
             if (req.user?._id === question.user?._id) {
 
@@ -289,13 +298,17 @@ interface IAddReviewData {
 export const addReview = CatchAsyncError(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userCourseList = req.user?.courses;
-
       const courseId = req.params.id;
 
-      // check if courseId already exists in userCourseList based on _id
-      const courseExists = userCourseList?.some(
-        (course: any) => course._id.toString() === courseId.toString()
+      // ✅ Always fetch fresh user from DB instead of relying on req.user cache
+      const user = await userModel.findById(req.user?._id);
+
+      if (!user) {
+        return next(new ErrorHandler("User not found", 404));
+      }
+
+      const courseExists = user.courses.some(
+        (course: any) => course.courseId.toString() === courseId.toString()
       );
 
       if (!courseExists) {
@@ -306,6 +319,10 @@ export const addReview = CatchAsyncError(
 
       const course = await courseModel.findById(courseId);
 
+      if (!course) {
+        return next(new ErrorHandler("Course not found", 404));
+      }
+
       const { review, rating } = req.body as IAddReviewData;
 
       const reviewData: any = {
@@ -314,25 +331,24 @@ export const addReview = CatchAsyncError(
         comment: review,
       };
 
-      course?.reviews.push(reviewData);
+      course.reviews.push(reviewData);
 
       let avg = 0;
-      course?.reviews.forEach((rev: any) => {
+      course.reviews.forEach((rev: any) => {
         avg += rev.rating;
       });
 
-      if (course) {
-        course.ratings = course?.reviews.length
-        ? avg / course.reviews.length
-        : 0;
-      }
+      course.ratings = course.reviews.length ? avg / course.reviews.length : 0;
 
-      await course?.save();
+      await course.save();
+
+      await redis.set(courseId.toString(), JSON.stringify(course), "EX", 604800);
+      await redis.del("allCourses");
 
       const notification = {
         title: "New review added",
-        message: `${req.user?.name} has given a review in ${course?.name}`
-      }
+        message: `${req.user?.name} has given a review in ${course.name}`,
+      };
 
       return res.status(200).json({
         success: true,
@@ -377,6 +393,8 @@ export const addReplyToReview = CatchAsyncError(
       review.commentReplies.push(replyData);
 
       await course?.save();
+      await redis.set(courseId, JSON.stringify(course), "EX", 604800);
+      await redis.del("allCourses");
 
       res.status(200).json({
         success: true,

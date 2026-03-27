@@ -28,6 +28,7 @@ exports.uploadCourse = (0, catchAsyncErrors_1.CatchAsyncError)(async (req, res, 
             };
         }
         await (0, course_service_1.createCourse)(data, res, next);
+        await redis_1.redis.del("allCourses");
     }
     catch (error) {
         return next(new ErrorHandler_1.default(error.message, 500));
@@ -57,6 +58,8 @@ exports.editCourse = (0, catchAsyncErrors_1.CatchAsyncError)(async (req, res, ne
         const updatedCourse = await course_model_1.default.findByIdAndUpdate(courseId, { $set: data }, 
         // { new: true }
         { returnDocument: "after" });
+        await redis_1.redis.set(courseId.toString(), JSON.stringify(updatedCourse), "EX", 604800);
+        await redis_1.redis.del("allCourses");
         res.status(200).json({
             success: true,
             course: updatedCourse,
@@ -102,7 +105,7 @@ exports.getAllCourses = (0, catchAsyncErrors_1.CatchAsyncError)(async (req, res,
         }
         else {
             const courses = await course_model_1.default.find().select("-courseData.videoUrl -courseData.suggestion -courseData.questions -courseData.links");
-            await redis_1.redis.set("allCourses", JSON.stringify(courses));
+            await redis_1.redis.set("allCourses", JSON.stringify(courses), "EX", 3600);
             res.status(200).json({
                 success: true,
                 courses,
@@ -150,6 +153,8 @@ exports.addQuestion = (0, catchAsyncErrors_1.CatchAsyncError)(async (req, res, n
         };
         couseContent.questions.push(newQuestion);
         await course?.save();
+        await redis_1.redis.set(courseId, JSON.stringify(course), "EX", 604800);
+        await redis_1.redis.del("allCourses");
         res.status(200).json({
             success: true,
             course,
@@ -180,6 +185,8 @@ exports.addAnswer = (0, catchAsyncErrors_1.CatchAsyncError)(async (req, res, nex
         };
         question.questionReplies.push(newAnswer);
         await course?.save();
+        await redis_1.redis.set(courseId, JSON.stringify(course), "EX", 604800);
+        await redis_1.redis.del("allCourses");
         if (req.user?._id === question.user?._id) {
         }
         else {
@@ -236,6 +243,8 @@ exports.addReview = (0, catchAsyncErrors_1.CatchAsyncError)(async (req, res, nex
                 : 0;
         }
         await course?.save();
+        await redis_1.redis.set(courseId.toString(), JSON.stringify(course), "EX", 604800);
+        await redis_1.redis.del("allCourses");
         const notification = {
             title: "New review added",
             message: `${req.user?.name} has given a review in ${course?.name}`
@@ -266,6 +275,8 @@ exports.addReplyToReview = (0, catchAsyncErrors_1.CatchAsyncError)(async (req, r
         };
         review.commentReplies.push(replyData);
         await course?.save();
+        await redis_1.redis.set(courseId, JSON.stringify(course), "EX", 604800);
+        await redis_1.redis.del("allCourses");
         res.status(200).json({
             success: true,
             course,
